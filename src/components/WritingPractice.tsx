@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Upload, Camera, Send, Clock, FileText, User, Lightbulb } from 'lucide-react';
-import { testService } from '../lib/testService';
-import { progressService } from '../lib/progressService';
+import { mockTestService, mockProgressService } from '../lib/mockServices';
 
 type Page = 'dashboard' | 'exam-selector' | 'writing' | 'reading' | 'speaking' | 'listening' | 'progress' | 'profile';
 
@@ -27,11 +26,10 @@ export default function WritingPractice({ onNavigate }: WritingPracticeProps) {
     setLoading(true);
     try {
       // Create test session
-      const session = await testService.createTestSession('writing');
+      await mockTestService.createTestSession('writing');
       
       // Submit writing essay
-      const submission = await testService.submitWritingEssay({
-        session_id: session.id,
+      const submission = await mockTestService.submitWritingEssay({
         task_type: selectedTask,
         prompt: selectedTask === 'task1' ? task1Prompt : task2Prompt,
         content: essay,
@@ -44,8 +42,8 @@ export default function WritingPractice({ onNavigate }: WritingPracticeProps) {
       setShowResults(true);
       
       // Update user stats
-      await progressService.incrementTestCompletion();
-      await progressService.addStudyTime(selectedTask === 'task1' ? 20 : 40);
+      await mockProgressService.incrementTestCompletion();
+      await mockProgressService.addStudyTime(selectedTask === 'task1' ? 20 : 40);
     } catch (error) {
       console.error('Error submitting essay:', error);
       alert('Error submitting essay. Please try again.');

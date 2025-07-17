@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Mic, Square, Play, RotateCcw, Volume2, Star } from 'lucide-react';
+import { mockTestService, mockProgressService } from '../lib/mockServices';
 
 type Page = 'dashboard' | 'exam-selector' | 'writing' | 'reading' | 'speaking' | 'listening' | 'progress' | 'profile';
 
@@ -61,8 +62,27 @@ export default function SpeakingPractice({ onNavigate }: SpeakingPracticeProps) 
     }
   };
 
-  const handleSubmit = () => {
-    setShowResults(true);
+  const handleSubmit = async () => {
+    try {
+      // Create test session
+      await mockTestService.createTestSession('speaking');
+      
+      // Submit speaking recording
+      const recording = await mockTestService.submitSpeakingRecording({
+        part_number: currentPart,
+        question: 'Mock speaking question',
+        duration: 120,
+      });
+
+      setShowResults(true);
+      
+      // Update user stats
+      await mockProgressService.incrementTestCompletion();
+      await mockProgressService.addStudyTime(15);
+    } catch (error) {
+      console.error('Error submitting speaking test:', error);
+      alert('Error submitting test. Please try again.');
+    }
   };
 
   const mockResults = {

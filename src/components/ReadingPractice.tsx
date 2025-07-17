@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Clock, CheckCircle, XCircle, BookOpen, ArrowRight } from 'lucide-react';
-import { testService } from '../lib/testService';
-import { progressService } from '../lib/progressService';
+import { mockTestService, mockProgressService } from '../lib/mockServices';
 
 type Page = 'dashboard' | 'exam-selector' | 'writing' | 'reading' | 'speaking' | 'listening' | 'progress' | 'profile';
 
@@ -100,7 +99,7 @@ export default function ReadingPractice({ onNavigate }: ReadingPracticeProps) {
     setLoading(true);
     try {
       // Create test session
-      const session = await testService.createTestSession('reading');
+      const session = await mockTestService.createTestSession('reading');
       
       // Prepare correct answers
       const correctAnswers = {
@@ -112,7 +111,7 @@ export default function ReadingPractice({ onNavigate }: ReadingPracticeProps) {
       };
       
       // Submit reading response
-      const response = await testService.submitReadingResponse({
+      const response = await mockTestService.submitReadingResponse({
         session_id: session.id,
         passage_id: 'renewable-energy-passage',
         answers,
@@ -125,8 +124,8 @@ export default function ReadingPractice({ onNavigate }: ReadingPracticeProps) {
       setShowResults(true);
       
       // Update user stats
-      await progressService.incrementTestCompletion();
-      await progressService.addStudyTime(60);
+      await mockProgressService.incrementTestCompletion();
+      await mockProgressService.addStudyTime(60);
     } catch (error) {
       console.error('Error submitting reading test:', error);
       alert('Error submitting test. Please try again.');

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Play, Pause, RotateCcw, Volume2, Clock, CheckCircle } from 'lucide-react';
+import { mockTestService, mockProgressService } from '../lib/mockServices';
 
 type Page = 'dashboard' | 'exam-selector' | 'writing' | 'reading' | 'speaking' | 'listening' | 'progress' | 'profile';
 
@@ -55,8 +56,37 @@ export default function ListeningPractice({ onNavigate }: ListeningPracticeProps
     }));
   };
 
-  const handleSubmit = () => {
-    setShowResults(true);
+  const handleSubmit = async () => {
+    try {
+      // Create test session
+      await mockTestService.createTestSession('listening');
+      
+      // Prepare correct answers
+      const correctAnswers = {
+        1: "University application",
+        2: "3",
+        3: "CV and references", 
+        4: "30",
+        5: "Call the office"
+      };
+      
+      // Submit listening response
+      const response = await mockTestService.submitListeningResponse({
+        audio_id: 'university-conversation',
+        answers,
+        correct_answers: correctAnswers,
+        total_questions: questions.length,
+      });
+
+      setShowResults(true);
+      
+      // Update user stats
+      await mockProgressService.incrementTestCompletion();
+      await mockProgressService.addStudyTime(30);
+    } catch (error) {
+      console.error('Error submitting listening test:', error);
+      alert('Error submitting test. Please try again.');
+    }
   };
 
   const formatTime = (seconds: number) => {

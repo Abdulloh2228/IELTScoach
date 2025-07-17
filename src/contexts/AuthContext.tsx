@@ -1,5 +1,24 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
-import { authService, type AuthUser } from '../lib/auth';
+import React, { createContext, useContext, useState } from 'react';
+
+interface AuthUser {
+  id: string;
+  email: string;
+  profile?: {
+    id: string;
+    full_name: string;
+    email: string;
+    target_score: number;
+    current_score: number;
+    exam_date?: string;
+    study_goal: string;
+    country?: string;
+    total_study_hours: number;
+    tests_completed: number;
+    current_streak: number;
+    created_at: string;
+    updated_at: string;
+  };
+}
 
 interface AuthContextType {
   user: AuthUser | null;
@@ -20,49 +39,69 @@ export function useAuth() {
   return context;
 }
 
+// Mock user data
+const mockUser: AuthUser = {
+  id: '1',
+  email: 'demo@example.com',
+  profile: {
+    id: '1',
+    full_name: 'Demo User',
+    email: 'demo@example.com',
+    target_score: 8.0,
+    current_score: 7.2,
+    exam_date: '2024-06-15',
+    study_goal: 'University Application',
+    country: 'United States',
+    total_study_hours: 45.5,
+    tests_completed: 12,
+    current_streak: 7,
+    created_at: '2024-01-01T00:00:00Z',
+    updated_at: '2024-01-15T00:00:00Z',
+  }
+};
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    console.log('AuthProvider: Starting auth check');
-    // Get initial user
-    authService.getCurrentUser().then(user => {
-      console.log('AuthProvider: Got user:', user);
-      setUser(user);
-      setLoading(false);
-    }).catch(error => {
-      console.error('AuthProvider: Error getting user:', error);
-      setUser(null);
-      setLoading(false);
-    });
-
-    // Listen for auth changes
-    const { data: { subscription } } = authService.onAuthStateChange((user) => {
-      console.log('AuthProvider: Auth state changed:', user);
-      setUser(user);
-      setLoading(false);
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
+  const [loading, setLoading] = useState(false);
 
   const signIn = async (email: string, password: string) => {
-    await authService.signIn(email, password);
+    setLoading(true);
+    // Simulate API call
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    setUser(mockUser);
+    setLoading(false);
   };
 
   const signUp = async (email: string, password: string, fullName: string) => {
-    await authService.signUp(email, password, fullName);
+    setLoading(true);
+    // Simulate API call
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    const newUser = {
+      ...mockUser,
+      email,
+      profile: {
+        ...mockUser.profile!,
+        email,
+        full_name: fullName,
+      }
+    };
+    setUser(newUser);
+    setLoading(false);
   };
 
   const signOut = async () => {
-    await authService.signOut();
+    setUser(null);
   };
 
   const updateProfile = async (updates: any) => {
-    const updatedProfile = await authService.updateProfile(updates);
-    if (user) {
-      setUser({ ...user, profile: updatedProfile });
+    if (user?.profile) {
+      setUser({
+        ...user,
+        profile: {
+          ...user.profile,
+          ...updates,
+        }
+      });
     }
   };
 
