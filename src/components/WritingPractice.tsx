@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { Upload, Camera, Send, Clock, FileText, User, Lightbulb } from 'lucide-react';
-import { mockTestService, mockProgressService } from '../lib/mockServices';
+import { testService } from '../lib/testService';
+import { progressService } from '../lib/progressService';
+import { getRandomWritingTask } from '../lib/testMaterials';
 
 type Page = 'dashboard' | 'exam-selector' | 'writing' | 'reading' | 'speaking' | 'listening' | 'progress' | 'profile';
 
@@ -15,10 +17,12 @@ export default function WritingPractice({ onNavigate }: WritingPracticeProps) {
   const [uploadMethod, setUploadMethod] = useState<'type' | 'upload'>('type');
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<any>(null);
+  const [currentTaskData, setCurrentTaskData] = useState(() => getRandomWritingTask('task1'));
 
-  const task1Prompt = "The chart below shows the percentage of households in owned and rented accommodation in England and Wales between 1918 and 2011. Summarise the information by selecting and reporting the main features, and make comparisons where relevant.";
-  
-  const task2Prompt = "Some people believe that studying at university or college is the best route to a successful career, while others believe that it is better to get a job straight after school. Discuss both views and give your opinion.";
+  React.useEffect(() => {
+    setCurrentTaskData(getRandomWritingTask(selectedTask));
+    setEssay('');
+  }, [selectedTask]);
 
   const handleSubmit = async () => {
     if (!essay.trim()) return;
@@ -26,15 +30,14 @@ export default function WritingPractice({ onNavigate }: WritingPracticeProps) {
     setLoading(true);
     try {
       // Create test session
-      await mockTestService.createTestSession('writing');
+      await testService.createTestSession('writing');
       
       // Submit writing essay
-      const submission = await mockTestService.submitWritingEssay({
+      const submission = await testService.submitWritingEssay({
         task_type: selectedTask,
-        prompt: selectedTask === 'task1' ? task1Prompt : task2Prompt,
+        prompt: currentTaskData.prompt,
         content: essay,
         submission_type: uploadMethod,
-        ai_feedback: {},
         human_feedback_requested: false,
       });
 
@@ -42,11 +45,11 @@ export default function WritingPractice({ onNavigate }: WritingPracticeProps) {
       setShowResults(true);
       
       // Update user stats
-      await mockProgressService.incrementTestCompletion();
-      await mockProgressService.addStudyTime(selectedTask === 'task1' ? 20 : 40);
+      await progressService.incrementTestCompletion();
+      await progressService.addStudyTime(selectedTask === 'task1' ? 20 : 40);
     } catch (error) {
       console.error('Error submitting essay:', error);
-      alert('Error submitting essay. Please try again.');
+      alert(`Error submitting essay: ${error instanceof Error ? error.message : 'Please try again.'}`);
     } finally {
       setLoading(false);
     }
@@ -222,8 +225,12 @@ export default function WritingPractice({ onNavigate }: WritingPracticeProps) {
         </div>
         <div className="bg-blue-50 border-l-4 border-blue-500 p-4 rounded">
           <p className="text-gray-800 leading-relaxed">
-            {selectedTask === 'task1' ? task1Prompt : task2Prompt}
+            {currentTaskData.prompt}
           </p>
+        </div>
+        <div className="mt-4 flex items-center justify-between text-sm text-gray-600">
+          <span>Time limit: {currentTaskData.timeLimit} minutes</span>
+          <span>Minimum words: {currentTaskData.wordLimit}</span>
         </div>
       </div>
 

@@ -1,5 +1,4 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -53,6 +52,7 @@ serve(async (req) => {
       }
     )
   } catch (error) {
+    console.error('AI Feedback Error:', error)
     return new Response(
       JSON.stringify({ error: error.message }),
       { 
@@ -67,41 +67,50 @@ serve(async (req) => {
 })
 
 async function generateWritingFeedback(data: WritingFeedbackRequest, apiKey: string) {
-  const prompt = `
-You are an expert IELTS examiner. Analyze this ${data.task_type} writing response and provide detailed feedback.
+  const systemPrompt = `You are an expert IELTS examiner with 15+ years of experience. You must provide accurate, detailed feedback following official IELTS band descriptors.
 
-Task Prompt: ${data.prompt}
+For Task 1: Focus on task achievement, data accuracy, overview, and appropriate language.
+For Task 2: Focus on task response, position clarity, idea development, and argumentation.
 
-Student Response: ${data.content}
+Always provide scores as numbers (e.g., 6.5, 7.0) and detailed, actionable feedback.`
 
-Word Count: ${data.word_count}
+  const userPrompt = `Analyze this IELTS ${data.task_type.toUpperCase()} response:
 
-Please provide:
-1. Overall band score (1-9)
-2. Individual scores for:
+TASK PROMPT: ${data.prompt}
+
+STUDENT RESPONSE: ${data.content}
+
+WORD COUNT: ${data.word_count}
+
+Provide detailed analysis with:
+1. Overall band score (1-9, use .5 increments)
+2. Individual criterion scores:
    - Task Achievement/Response (1-9)
-   - Coherence and Cohesion (1-9)
+   - Coherence and Cohesion (1-9) 
    - Lexical Resource (1-9)
    - Grammatical Range and Accuracy (1-9)
-3. Detailed feedback including:
-   - Strengths (3-4 points)
-   - Areas for improvement (3-4 points)
-   - Specific suggestions (3-4 points)
+3. Specific feedback for each criterion
+4. 3-4 key strengths
+5. 3-4 areas for improvement
+6. 3-4 actionable suggestions
 
-Format your response as JSON with this structure:
+Format as JSON:
 {
   "band_score": number,
   "task_response": number,
   "coherence_cohesion": number,
   "lexical_resource": number,
   "grammatical_range": number,
-  "feedback": {
-    "strengths": ["point1", "point2", "point3"],
-    "improvements": ["point1", "point2", "point3"],
-    "suggestions": ["point1", "point2", "point3"]
-  }
-}
-`
+  "detailed_feedback": {
+    "task_achievement": "specific feedback",
+    "coherence_cohesion": "specific feedback", 
+    "lexical_resource": "specific feedback",
+    "grammatical_range": "specific feedback"
+  },
+  "strengths": ["strength1", "strength2", "strength3"],
+  "improvements": ["improvement1", "improvement2", "improvement3"],
+  "suggestions": ["suggestion1", "suggestion2", "suggestion3"]
+}`
 
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
@@ -112,17 +121,11 @@ Format your response as JSON with this structure:
     body: JSON.stringify({
       model: 'gpt-4',
       messages: [
-        {
-          role: 'system',
-          content: 'You are an expert IELTS examiner with years of experience. Provide accurate, constructive feedback that helps students improve their IELTS writing scores.'
-        },
-        {
-          role: 'user',
-          content: prompt
-        }
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt }
       ],
-      temperature: 0.3,
-      max_tokens: 1000
+      temperature: 0.2,
+      max_tokens: 1500
     })
   })
 
@@ -133,48 +136,65 @@ Format your response as JSON with this structure:
   }
 
   try {
-    return JSON.parse(result.choices[0].message.content)
+    const content = result.choices[0].message.content
+    return JSON.parse(content)
   } catch (e) {
+    console.error('Failed to parse AI response:', result.choices[0].message.content)
     throw new Error('Failed to parse AI response')
   }
 }
 
 async function generateSpeakingFeedback(data: SpeakingFeedbackRequest, apiKey: string) {
-  const prompt = `
-You are an expert IELTS speaking examiner. Analyze this Part ${data.part_number} speaking response.
+  const systemPrompt = `You are an expert IELTS speaking examiner. Analyze speaking responses based on official IELTS criteria:
+- Fluency and Coherence
+- Pronunciation 
+- Lexical Resource
+- Grammatical Range and Accuracy
 
-Question: ${data.question}
+Consider the part number context:
+Part 1: Personal questions, 4-5 minutes
+Part 2: Individual long turn, 3-4 minutes  
+Part 3: Discussion, 4-5 minutes
 
-Student Response Transcript: ${data.transcript}
+Provide accurate band scores and specific, actionable feedback.`
 
-Duration: ${data.duration} seconds
+  const userPrompt = `Analyze this IELTS Speaking Part ${data.part_number} response:
 
-Please provide:
-1. Overall band score (1-9)
-2. Individual scores for:
+QUESTION: ${data.question}
+
+TRANSCRIPT: ${data.transcript}
+
+DURATION: ${data.duration} seconds
+
+Provide detailed analysis with:
+1. Overall band score (1-9, use .5 increments)
+2. Individual criterion scores:
    - Fluency and Coherence (1-9)
    - Pronunciation (1-9)
-   - Lexical Resource (1-9)
+   - Lexical Resource (1-9) 
    - Grammatical Range and Accuracy (1-9)
-3. Detailed feedback including:
-   - Strengths (3-4 points)
-   - Areas for improvement (3-4 points)
-   - Specific suggestions (3-4 points)
+3. Specific feedback for each criterion
+4. 3-4 key strengths
+5. 3-4 areas for improvement
+6. 3-4 actionable suggestions
 
-Format your response as JSON with this structure:
+Format as JSON:
 {
   "band_score": number,
   "fluency_coherence": number,
   "pronunciation": number,
   "lexical_resource": number,
   "grammatical_range": number,
-  "feedback": {
-    "strengths": ["point1", "point2", "point3"],
-    "improvements": ["point1", "point2", "point3"],
-    "suggestions": ["point1", "point2", "point3"]
-  }
-}
-`
+  "detailed_feedback": {
+    "fluency_coherence": "specific feedback",
+    "pronunciation": "specific feedback",
+    "lexical_resource": "specific feedback", 
+    "grammatical_range": "specific feedback"
+  },
+  "strengths": ["strength1", "strength2", "strength3"],
+  "improvements": ["improvement1", "improvement2", "improvement3"],
+  "suggestions": ["suggestion1", "suggestion2", "suggestion3"]
+}`
 
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
@@ -185,17 +205,11 @@ Format your response as JSON with this structure:
     body: JSON.stringify({
       model: 'gpt-4',
       messages: [
-        {
-          role: 'system',
-          content: 'You are an expert IELTS speaking examiner. Provide accurate, constructive feedback based on the transcript provided.'
-        },
-        {
-          role: 'user',
-          content: prompt
-        }
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt }
       ],
-      temperature: 0.3,
-      max_tokens: 800
+      temperature: 0.2,
+      max_tokens: 1200
     })
   })
 
@@ -206,8 +220,10 @@ Format your response as JSON with this structure:
   }
 
   try {
-    return JSON.parse(result.choices[0].message.content)
+    const content = result.choices[0].message.content
+    return JSON.parse(content)
   } catch (e) {
+    console.error('Failed to parse AI response:', result.choices[0].message.content)
     throw new Error('Failed to parse AI response')
   }
 }

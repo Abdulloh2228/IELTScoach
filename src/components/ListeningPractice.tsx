@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { Play, Pause, RotateCcw, Volume2, Clock, CheckCircle } from 'lucide-react';
-import { mockTestService, mockProgressService } from '../lib/mockServices';
+import { testService } from '../lib/testService';
+import { progressService } from '../lib/progressService';
+import { getRandomListeningTest } from '../lib/testMaterials';
 
 type Page = 'dashboard' | 'exam-selector' | 'writing' | 'reading' | 'speaking' | 'listening' | 'progress' | 'profile';
 
@@ -13,37 +15,9 @@ export default function ListeningPractice({ onNavigate }: ListeningPracticeProps
   const [currentTime, setCurrentTime] = useState(0);
   const [answers, setAnswers] = useState<{ [key: number]: string }>({});
   const [showResults, setShowResults] = useState(false);
+  const [results, setResults] = useState<any>(null);
+  const [listeningData] = useState(() => getRandomListeningTest());
 
-  const questions = [
-    {
-      id: 1,
-      question: "What is the main topic of the conversation?",
-      type: "multiple-choice",
-      options: ["Travel arrangements", "University application", "Job interview", "Restaurant booking"]
-    },
-    {
-      id: 2,
-      question: "The speaker mentions meeting at _____ o'clock.",
-      type: "fill-blank"
-    },
-    {
-      id: 3,
-      question: "What documents does Sarah need to bring?",
-      type: "multiple-choice",
-      options: ["Passport and photos", "CV and references", "ID and transcripts", "Application form"]
-    },
-    {
-      id: 4,
-      question: "The interview will last approximately _____ minutes.",
-      type: "fill-blank"
-    },
-    {
-      id: 5,
-      question: "What should Sarah do if she's running late?",
-      type: "multiple-choice",
-      options: ["Call the office", "Send an email", "Come anyway", "Reschedule"]
-    }
-  ];
 
   const handlePlay = () => {
     setIsPlaying(!isPlaying);
@@ -59,33 +33,35 @@ export default function ListeningPractice({ onNavigate }: ListeningPracticeProps
   const handleSubmit = async () => {
     try {
       // Create test session
-      await mockTestService.createTestSession('listening');
+      await testService.createTestSession('listening');
       
       // Prepare correct answers
-      const correctAnswers = {
-        1: "University application",
-        2: "3",
-        3: "CV and references", 
-        4: "30",
-        5: "Call the office"
-      };
+      const correctAnswers: { [key: string]: string } = {};
+      listeningData.questions.forEach(q => {
+        if (q.type === 'multiple_choice' && q.options) {
+          correctAnswers[q.id.toString()] = q.options[q.correct as number];
+        } else {
+          correctAnswers[q.id.toString()] = q.correct as string;
+        }
+      });
       
       // Submit listening response
-      const response = await mockTestService.submitListeningResponse({
-        audio_id: 'university-conversation',
+      const response = await testService.submitListeningResponse({
+        audio_id: listeningData.id,
         answers,
         correct_answers: correctAnswers,
-        total_questions: questions.length,
+        total_questions: listeningData.questions.length,
       });
 
+      setResults(response);
       setShowResults(true);
       
       // Update user stats
-      await mockProgressService.incrementTestCompletion();
-      await mockProgressService.addStudyTime(30);
+      await progressService.incrementTestCompletion();
+      await progressService.addStudyTime(30);
     } catch (error) {
       console.error('Error submitting listening test:', error);
-      alert('Error submitting test. Please try again.');
+      alert(`Error submitting test: ${error instanceof Error ? error.message : 'Please try again.'}`);
     }
   };
 
@@ -96,6 +72,8 @@ export default function ListeningPractice({ onNavigate }: ListeningPracticeProps
   };
 
   if (showResults) {
+    if (!results) return null;
+    
     return (
       <div className="space-y-8">
         <div className="flex items-center justify-between">
@@ -111,19 +89,26 @@ export default function ListeningPractice({ onNavigate }: ListeningPracticeProps
         {/* Score Overview */}
         <div className="bg-gradient-to-r from-orange-600 to-red-600 rounded-xl p-8 text-white text-center">
           <h2 className="text-2xl font-semibold mb-2">Your Listening Band Score</h2>
-          <div className="text-6xl font-bold mb-4">7.0</div>
-          <p className="text-orange-100">4 out of 5 questions answered correctly</p>
+          <div className="text-6xl font-bold mb-4">{results.band_score}</div>
+          <p className="text-orange-100">{results.score} out of {results.total_questions} questions answered correctly</p>
         </div>
 
         {/* Detailed Results */}
         <div className="bg-white rounded-xl p-6 shadow-lg border border-gray-100">
           <h3 className="text-xl font-semibold text-gray-900 mb-6">Answer Review</h3>
           <div className="space-y-4">
-            {questions.map((question) => {
+            {listeningData.questions.map((question) => {
               const userAnswer = answers[question.id] || '';
-              const sampleCorrectAnswers = ['University application', '3', 'CV and references', '30', 'Call the office'];
-              const correctAnswer = sampleCorrectAnswers[question.id - 1];
-              const isCorrect = userAnswer.toLowerCase() === correctAnswer.toLowerCase();
+              let correctAnswer = '';
+              let isCorrect = false;
+              
+              if (question.type === 'multiple_choice' && question.options) {
+                correctAnswer = question.options[question.correct as number];
+                isCorrect = userAnswer === correctAnswer;
+              } else {
+                correctAnswer = question.correct as string;
+                isCorrect = userAnswer.toLowerCase().trim() === correctAnswer.toLowerCase().trim();
+              }
               
               return (
                 <div key={question.id} className={`p-4 rounded-lg border-2 ${
@@ -149,14 +134,9 @@ export default function ListeningPractice({ onNavigate }: ListeningPracticeProps
         <div className="bg-white rounded-xl p-6 shadow-lg border border-gray-100">
           <h3 className="text-xl font-semibold text-gray-900 mb-4">Audio Transcript</h3>
           <div className="bg-gray-50 p-4 rounded-lg">
-            <p className="text-gray-700 leading-relaxed">
-              <strong>Receptionist:</strong> Good morning, University Admissions Office. How can I help you?<br/><br/>
-              <strong>Sarah:</strong> Hi, I'm calling about my university application interview. I received an email saying I need to confirm some details.<br/><br/>
-              <strong>Receptionist:</strong> Of course! Could I have your name please?<br/><br/>
-              <strong>Sarah:</strong> It's Sarah Thompson.<br/><br/>
-              <strong>Receptionist:</strong> Right, Sarah. Your interview is scheduled for next Tuesday at 3 o'clock. You'll need to bring your CV and references. The interview will last approximately 30 minutes. If you're running late for any reason, please call our office immediately.<br/><br/>
-              <strong>Sarah:</strong> Perfect, thank you so much for confirming those details.
-            </p>
+            <div className="text-gray-700 leading-relaxed whitespace-pre-line">
+              {listeningData.transcript}
+            </div>
           </div>
         </div>
       </div>
@@ -183,7 +163,7 @@ export default function ListeningPractice({ onNavigate }: ListeningPracticeProps
       <div className="bg-white rounded-xl p-6 shadow-lg border border-gray-100">
         <div className="flex items-center space-x-2 mb-4">
           <Volume2 className="text-orange-600" size={20} />
-          <h2 className="text-xl font-semibold text-gray-900">Audio Player</h2>
+          <h2 className="text-xl font-semibold text-gray-900">{listeningData.title}</h2>
         </div>
         
         <div className="bg-gradient-to-r from-orange-50 to-red-50 rounded-lg p-6 border border-orange-100">
@@ -226,7 +206,6 @@ export default function ListeningPractice({ onNavigate }: ListeningPracticeProps
       <div className="bg-blue-50 border-l-4 border-blue-500 p-4 rounded">
         <h3 className="font-semibold text-blue-800 mb-2">Instructions</h3>
         <p className="text-blue-700">
-          You will hear a conversation between a student and a university receptionist. 
           Listen carefully and answer the questions below. You will hear the recording ONCE only.
         </p>
       </div>
@@ -236,15 +215,15 @@ export default function ListeningPractice({ onNavigate }: ListeningPracticeProps
         <h2 className="text-xl font-semibold text-gray-900 mb-6">Questions</h2>
         
         <div className="space-y-6">
-          {questions.map((question, index) => (
+          {listeningData.questions.map((question, index) => (
             <div key={question.id} className="p-4 border border-gray-200 rounded-lg">
               <p className="font-medium text-gray-800 mb-4">
                 {index + 1}. {question.question}
               </p>
               
-              {question.type === 'multiple-choice' ? (
+              {question.type === 'multiple_choice' && question.options ? (
                 <div className="space-y-2">
-                  {question.options?.map((option, optionIndex) => (
+                  {question.options.map((option, optionIndex) => (
                     <label key={optionIndex} className="flex items-center space-x-3 cursor-pointer">
                       <input
                         type="radio"
@@ -273,7 +252,7 @@ export default function ListeningPractice({ onNavigate }: ListeningPracticeProps
 
         <div className="flex justify-between items-center mt-6">
           <span className="text-gray-600">
-            {Object.keys(answers).length}/{questions.length} questions answered
+            {Object.keys(answers).length}/{listeningData.questions.length} questions answered
           </span>
           <button
             onClick={handleSubmit}

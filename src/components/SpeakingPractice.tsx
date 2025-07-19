@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { Mic, Square, Play, RotateCcw, Volume2, Star } from 'lucide-react';
-import { mockTestService, mockProgressService } from '../lib/mockServices';
+import { testService } from '../lib/testService';
+import { progressService } from '../lib/progressService';
+import { getRandomSpeakingQuestions } from '../lib/testMaterials';
 
 type Page = 'dashboard' | 'exam-selector' | 'writing' | 'reading' | 'speaking' | 'listening' | 'progress' | 'profile';
 
@@ -13,44 +15,14 @@ export default function SpeakingPractice({ onNavigate }: SpeakingPracticeProps) 
   const [isRecording, setIsRecording] = useState(false);
   const [hasRecording, setHasRecording] = useState(false);
   const [showResults, setShowResults] = useState(false);
+  const [currentQuestions, setCurrentQuestions] = useState(() => getRandomSpeakingQuestions(1));
+  const [results, setResults] = useState<any>(null);
 
-  const speakingParts = {
-    1: {
-      title: "Part 1 - Introduction & Interview",
-      duration: "4-5 minutes",
-      description: "The examiner will ask you general questions about yourself and familiar topics.",
-      questions: [
-        "Could you tell me your full name?",
-        "What work do you do?",
-        "Do you enjoy your job? Why?",
-        "How do you usually spend your weekends?",
-        "What kind of music do you like?"
-      ]
-    },
-    2: {
-      title: "Part 2 - Long Turn",
-      duration: "3-4 minutes",
-      description: "You will speak for 1-2 minutes on a given topic after 1 minute of preparation.",
-      topic: "Describe a place you have visited that you particularly enjoyed.",
-      points: [
-        "Where it was",
-        "When you went there",
-        "What you did there",
-        "And explain why you enjoyed it"
-      ]
-    },
-    3: {
-      title: "Part 3 - Discussion",
-      duration: "4-5 minutes",
-      description: "The examiner will ask you questions related to the Part 2 topic.",
-      questions: [
-        "How important is travel in people's lives?",
-        "What are the benefits of visiting different places?",
-        "Do you think tourism has any negative effects?",
-        "How has tourism changed in your country over the years?"
-      ]
-    }
-  };
+  React.useEffect(() => {
+    setCurrentQuestions(getRandomSpeakingQuestions(currentPart as 1 | 2 | 3));
+    setHasRecording(false);
+    setIsRecording(false);
+  }, [currentPart]);
 
   const handleRecord = () => {
     if (isRecording) {
@@ -65,42 +37,34 @@ export default function SpeakingPractice({ onNavigate }: SpeakingPracticeProps) 
   const handleSubmit = async () => {
     try {
       // Create test session
-      await mockTestService.createTestSession('speaking');
+      await testService.createTestSession('speaking');
       
       // Submit speaking recording
-      const recording = await mockTestService.submitSpeakingRecording({
+      const currentQuestion = currentPart === 2 
+        ? (currentQuestions as any).topic 
+        : (currentQuestions as any).questions?.[0] || 'Speaking question';
+        
+      const recording = await testService.submitSpeakingRecording({
         part_number: currentPart,
-        question: 'Mock speaking question',
+        question: currentQuestion,
         duration: 120,
       });
 
+      setResults(recording);
       setShowResults(true);
       
       // Update user stats
-      await mockProgressService.incrementTestCompletion();
-      await mockProgressService.addStudyTime(15);
+      await progressService.incrementTestCompletion();
+      await progressService.addStudyTime(15);
     } catch (error) {
       console.error('Error submitting speaking test:', error);
-      alert('Error submitting test. Please try again.');
+      alert(`Error submitting test: ${error instanceof Error ? error.message : 'Please try again.'}`);
     }
   };
 
-  const mockResults = {
-    overallScore: 6.5,
-    fluency: 7.0,
-    pronunciation: 6.0,
-    lexical: 6.5,
-    grammar: 6.5,
-    feedback: [
-      "Good fluency with natural rhythm in most responses",
-      "Work on pronunciation of specific sounds (/th/, /r/)",
-      "Use more varied vocabulary and idiomatic expressions",
-      "Practice complex grammatical structures",
-      "Extend your answers with more detailed examples"
-    ]
-  };
-
   if (showResults) {
+    if (!results) return null;
+    
     return (
       <div className="space-y-8">
         <div className="flex items-center justify-between">
@@ -116,7 +80,7 @@ export default function SpeakingPractice({ onNavigate }: SpeakingPracticeProps) 
         {/* Overall Score */}
         <div className="bg-gradient-to-r from-purple-600 to-pink-600 rounded-xl p-8 text-white text-center">
           <h2 className="text-2xl font-semibold mb-2">Your Speaking Band Score</h2>
-          <div className="text-6xl font-bold mb-4">{mockResults.overallScore}</div>
+          <div className="text-6xl font-bold mb-4">{results.band_score}</div>
           <p className="text-purple-100">Great progress! Keep practicing to reach your target.</p>
         </div>
 
@@ -126,10 +90,10 @@ export default function SpeakingPractice({ onNavigate }: SpeakingPracticeProps) 
             <h3 className="text-xl font-semibold text-gray-900 mb-4">Detailed Scores</h3>
             <div className="space-y-4">
               {[
-                { criteria: 'Fluency & Coherence', score: mockResults.fluency },
-                { criteria: 'Pronunciation', score: mockResults.pronunciation },
-                { criteria: 'Lexical Resource', score: mockResults.lexical },
-                { criteria: 'Grammatical Range', score: mockResults.grammar }
+                { criteria: 'Fluency & Coherence', score: results.fluency_coherence },
+                { criteria: 'Pronunciation', score: results.pronunciation },
+                { criteria: 'Lexical Resource', score: results.lexical_resource },
+                { criteria: 'Grammatical Range', score: results.grammatical_range }
               ].map((item, index) => (
                 <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                   <span className="font-medium text-gray-800">{item.criteria}</span>
@@ -150,7 +114,7 @@ export default function SpeakingPractice({ onNavigate }: SpeakingPracticeProps) 
           <div className="bg-white rounded-xl p-6 shadow-lg border border-gray-100">
             <h3 className="text-xl font-semibold text-gray-900 mb-4">AI Feedback</h3>
             <div className="space-y-3">
-              {mockResults.feedback.map((tip, index) => (
+              {results.ai_feedback.improvements?.map((tip: string, index: number) => (
                 <div key={index} className="flex items-start space-x-3 p-3 bg-purple-50 rounded-lg">
                   <div className="bg-purple-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm font-bold">
                     {index + 1}
@@ -215,12 +179,17 @@ export default function SpeakingPractice({ onNavigate }: SpeakingPracticeProps) 
                   : 'border-gray-200 hover:border-gray-300'
               }`}
             >
-              <h3 className="font-semibold mb-1">{speakingParts[part as keyof typeof speakingParts].title}</h3>
+              <h3 className="font-semibold mb-1">Part {part} - {
+                part === 1 ? 'Introduction & Interview' :
+                part === 2 ? 'Long Turn' : 'Discussion'
+              }</h3>
               <p className="text-sm text-gray-600 mb-2">
-                {speakingParts[part as keyof typeof speakingParts].duration}
+                {part === 1 ? '4-5 minutes' : part === 2 ? '3-4 minutes' : '4-5 minutes'}
               </p>
               <p className="text-xs text-gray-500">
-                {speakingParts[part as keyof typeof speakingParts].description}
+                {part === 1 ? 'General questions about yourself' :
+                 part === 2 ? 'Speak for 1-2 minutes on a topic' :
+                 'Discussion related to Part 2 topic'}
               </p>
             </button>
           ))}
@@ -230,21 +199,21 @@ export default function SpeakingPractice({ onNavigate }: SpeakingPracticeProps) 
       {/* Current Part Content */}
       <div className="bg-white rounded-xl p-6 shadow-lg border border-gray-100">
         <h2 className="text-xl font-semibold text-gray-900 mb-4">
-          {speakingParts[currentPart as keyof typeof speakingParts].title}
+          Part {currentPart} - {
+            currentPart === 1 ? 'Introduction & Interview' :
+            currentPart === 2 ? 'Long Turn' : 'Discussion'
+          }
         </h2>
         
         {currentPart === 2 ? (
           <div className="bg-blue-50 border-l-4 border-blue-500 p-6 rounded mb-6">
             <h3 className="font-semibold text-blue-800 mb-3">Cue Card</h3>
             <p className="text-gray-800 font-medium mb-4">
-              {speakingParts[2].topic}
+              {(currentQuestions as any).topic}
             </p>
-            <p className="text-gray-700 mb-2">You should say:</p>
-            <ul className="text-gray-700 space-y-1">
-              {speakingParts[2].points.map((point, index) => (
-                <li key={index}>• {point}</li>
-              ))}
-            </ul>
+            <div className="text-gray-700 whitespace-pre-line">
+              {(currentQuestions as any).cueCard}
+            </div>
             <p className="text-sm text-gray-600 mt-4 font-medium">
               You have 1 minute to prepare. You can make notes if you wish.
             </p>
@@ -252,7 +221,7 @@ export default function SpeakingPractice({ onNavigate }: SpeakingPracticeProps) 
         ) : (
           <div className="space-y-4 mb-6">
             <h3 className="font-semibold text-gray-800">Practice Questions:</h3>
-            {speakingParts[currentPart as keyof typeof speakingParts].questions?.map((question, index) => (
+            {(currentQuestions as any).questions?.map((question: string, index: number) => (
               <div key={index} className="p-3 bg-gray-50 rounded-lg">
                 <p className="text-gray-700">{index + 1}. {question}</p>
               </div>

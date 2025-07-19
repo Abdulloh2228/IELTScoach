@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { Clock, CheckCircle, XCircle, BookOpen, ArrowRight } from 'lucide-react';
-import { mockTestService, mockProgressService } from '../lib/mockServices';
+import { testService } from '../lib/testService';
+import { progressService } from '../lib/progressService';
+import { getRandomReadingPassage } from '../lib/testMaterials';
 
 type Page = 'dashboard' | 'exam-selector' | 'writing' | 'reading' | 'speaking' | 'listening' | 'progress' | 'profile';
 
@@ -15,78 +17,8 @@ export default function ReadingPractice({ onNavigate }: ReadingPracticeProps) {
   const [timeLeft, setTimeLeft] = useState(3600); // 60 minutes in seconds
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<any>(null);
+  const [passageData] = useState(() => getRandomReadingPassage());
 
-  const passage = `
-    The Rise of Renewable Energy
-
-    The global transition to renewable energy sources has accelerated dramatically over the past decade. Solar and wind power, once considered alternative technologies, have now become mainstream solutions for electricity generation. This shift represents one of the most significant changes in the energy sector since the industrial revolution.
-
-    Cost reduction has been a primary driver of this transformation. The price of solar panels has fallen by more than 80% since 2010, while wind turbine costs have decreased by approximately 50% over the same period. These dramatic price reductions have made renewable energy competitive with, and in many cases cheaper than, traditional fossil fuel sources.
-
-    Technological advancement has also played a crucial role. Modern solar panels are significantly more efficient than their predecessors, converting a higher percentage of sunlight into electricity. Similarly, wind turbines have become larger and more sophisticated, capable of generating power even in low-wind conditions.
-
-    Government policies worldwide have provided additional momentum. Many countries have implemented feed-in tariffs, tax incentives, and renewable energy mandates that encourage both individual and corporate adoption of clean energy technologies. The European Union has set ambitious targets to achieve carbon neutrality by 2050, while China has become the world's largest producer of solar panels and wind turbines.
-
-    However, challenges remain. Energy storage technology, while improving, still needs further development to handle the intermittent nature of renewable sources. Grid infrastructure must also be upgraded to accommodate the distributed nature of renewable energy generation. Despite these obstacles, experts predict that renewable energy will comprise the majority of global electricity generation within the next two decades.
-  `;
-
-  const questions = [
-    {
-      id: 1,
-      question: "What has been the primary driver of the transition to renewable energy?",
-      options: [
-        "Government policies",
-        "Cost reduction",
-        "Technological advancement",
-        "Environmental concerns"
-      ],
-      correct: 1
-    },
-    {
-      id: 2,
-      question: "By approximately what percentage have solar panel prices fallen since 2010?",
-      options: [
-        "50%",
-        "60%",
-        "70%",
-        "80%"
-      ],
-      correct: 3
-    },
-    {
-      id: 3,
-      question: "According to the passage, what is a remaining challenge for renewable energy?",
-      options: [
-        "High costs",
-        "Lack of government support",
-        "Energy storage technology",
-        "Public acceptance"
-      ],
-      correct: 2
-    },
-    {
-      id: 4,
-      question: "Which region has set targets for carbon neutrality by 2050?",
-      options: [
-        "United States",
-        "China",
-        "European Union",
-        "Japan"
-      ],
-      correct: 2
-    },
-    {
-      id: 5,
-      question: "What do experts predict about renewable energy in the next two decades?",
-      options: [
-        "It will completely replace fossil fuels",
-        "It will comprise the majority of global electricity generation",
-        "Costs will continue to rise",
-        "Technology will plateau"
-      ],
-      correct: 1
-    }
-  ];
 
   const handleAnswerSelect = (questionId: number, optionIndex: number) => {
     setAnswers(prev => ({
@@ -99,24 +31,25 @@ export default function ReadingPractice({ onNavigate }: ReadingPracticeProps) {
     setLoading(true);
     try {
       // Create test session
-      const session = await mockTestService.createTestSession('reading');
+      const session = await testService.createTestSession('reading');
       
       // Prepare correct answers
-      const correctAnswers = {
-        1: "1", // Cost reduction
-        2: "3", // 80%
-        3: "2", // Energy storage technology
-        4: "2", // European Union
-        5: "1", // It will comprise the majority of global electricity generation
-      };
+      const correctAnswers: { [key: string]: string } = {};
+      passageData.questions.forEach(q => {
+        if (q.type === 'multiple_choice') {
+          correctAnswers[q.id.toString()] = q.correct.toString();
+        } else {
+          correctAnswers[q.id.toString()] = q.correct;
+        }
+      });
       
       // Submit reading response
-      const response = await mockTestService.submitReadingResponse({
+      const response = await testService.submitReadingResponse({
         session_id: session.id,
-        passage_id: 'renewable-energy-passage',
+        passage_id: passageData.id,
         answers,
         correct_answers: correctAnswers,
-        total_questions: questions.length,
+        total_questions: passageData.questions.length,
         time_taken: 3600 - timeLeft,
       });
 
@@ -124,11 +57,11 @@ export default function ReadingPractice({ onNavigate }: ReadingPracticeProps) {
       setShowResults(true);
       
       // Update user stats
-      await mockProgressService.incrementTestCompletion();
-      await mockProgressService.addStudyTime(60);
+      await progressService.incrementTestCompletion();
+      await progressService.addStudyTime(60);
     } catch (error) {
       console.error('Error submitting reading test:', error);
-      alert('Error submitting test. Please try again.');
+      alert(`Error submitting test: ${error instanceof Error ? error.message : 'Please try again.'}`);
     } finally {
       setLoading(false);
     }
@@ -173,9 +106,19 @@ export default function ReadingPractice({ onNavigate }: ReadingPracticeProps) {
         <div className="bg-white rounded-xl p-6 shadow-lg border border-gray-100">
           <h3 className="text-xl font-semibold text-gray-900 mb-6">Question Analysis</h3>
           <div className="space-y-4">
-            {questions.map((question, index) => {
-              const userAnswer = answers[question.id] ? parseInt(answers[question.id]) : -1;
-              const isCorrect = userAnswer === question.correct;
+            {passageData.questions.map((question, index) => {
+              const userAnswer = answers[question.id] || '';
+              let isCorrect = false;
+              let correctAnswer = '';
+              
+              if (question.type === 'multiple_choice' && question.options) {
+                const userIndex = parseInt(userAnswer);
+                isCorrect = userIndex === question.correct;
+                correctAnswer = question.options[question.correct as number];
+              } else {
+                isCorrect = userAnswer.toLowerCase().trim() === (question.correct as string).toLowerCase().trim();
+                correctAnswer = question.correct as string;
+              }
               
               return (
                 <div key={question.id} className={`p-4 rounded-lg border-2 ${
@@ -191,9 +134,9 @@ export default function ReadingPractice({ onNavigate }: ReadingPracticeProps) {
                       <p className="font-medium text-gray-800 mb-2">{question.question}</p>
                       <div className="text-sm space-y-1">
                         <p><span className="font-medium">Your answer:</span> {
-                          userAnswer >= 0 ? question.options[userAnswer] : 'Not answered'
+                          userAnswer || 'Not answered'
                         }</p>
-                        <p><span className="font-medium">Correct answer:</span> {question.options[question.correct]}</p>
+                        <p><span className="font-medium">Correct answer:</span> {correctAnswer}</p>
                       </div>
                     </div>
                   </div>
@@ -256,11 +199,11 @@ export default function ReadingPractice({ onNavigate }: ReadingPracticeProps) {
         <div className="bg-white rounded-xl p-6 shadow-lg border border-gray-100">
           <div className="flex items-center space-x-2 mb-4">
             <BookOpen className="text-blue-600" size={20} />
-            <h2 className="text-xl font-semibold text-gray-900">Reading Passage</h2>
+            <h2 className="text-xl font-semibold text-gray-900">{passageData.title}</h2>
           </div>
           <div className="prose prose-sm max-w-none">
             <div className="whitespace-pre-line text-gray-700 leading-relaxed">
-              {passage}
+              {passageData.passage}
             </div>
           </div>
         </div>
@@ -270,31 +213,64 @@ export default function ReadingPractice({ onNavigate }: ReadingPracticeProps) {
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-xl font-semibold text-gray-900">Questions</h2>
             <span className="text-sm text-gray-600">
-              {Object.keys(answers).length}/{questions.length} answered
+              {Object.keys(answers).length}/{passageData.questions.length} answered
             </span>
           </div>
 
           <div className="space-y-6">
-            {questions.map((question, index) => (
+            {passageData.questions.map((question, index) => (
               <div key={question.id} className="p-4 border border-gray-200 rounded-lg">
                 <p className="font-medium text-gray-800 mb-4">
                   {index + 1}. {question.question}
                 </p>
-                <div className="space-y-2">
-                  {question.options.map((option, optionIndex) => (
-                    <label key={optionIndex} className="flex items-center space-x-3 cursor-pointer">
+                
+                {question.type === 'multiple_choice' && question.options && (
+                  <div className="space-y-2">
+                    {question.options.map((option, optionIndex) => (
+                      <label key={optionIndex} className="flex items-center space-x-3 cursor-pointer">
+                        <input
+                          type="radio"
+                          name={`question-${question.id}`}
+                          value={optionIndex}
+                          checked={answers[question.id] === optionIndex.toString()}
+                          onChange={() => handleAnswerSelect(question.id, optionIndex)}
+                          className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+                        />
+                        <span className="text-gray-700">{option}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+                
+                {(question.type === 'fill_blank' || question.type === 'true_false_not_given') && (
+                  <div>
+                    {question.type === 'true_false_not_given' ? (
+                      <div className="space-y-2">
+                        {['TRUE', 'FALSE', 'NOT GIVEN'].map((option) => (
+                          <label key={option} className="flex items-center space-x-3 cursor-pointer">
+                            <input
+                              type="radio"
+                              name={`question-${question.id}`}
+                              value={option}
+                              checked={answers[question.id] === option}
+                              onChange={() => handleAnswerSelect(question.id, option)}
+                              className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+                            />
+                            <span className="text-gray-700">{option}</span>
+                          </label>
+                        ))}
+                      </div>
+                    ) : (
                       <input
-                        type="radio"
-                        name={`question-${question.id}`}
-                        value={optionIndex}
-                        checked={answers[question.id] === optionIndex.toString()}
-                        onChange={() => handleAnswerSelect(question.id, optionIndex)}
-                        className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+                        type="text"
+                        value={answers[question.id] || ''}
+                        onChange={(e) => handleAnswerSelect(question.id, e.target.value)}
+                        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder="Type your answer here..."
                       />
-                      <span className="text-gray-700">{option}</span>
-                    </label>
-                  ))}
-                </div>
+                    )}
+                  </div>
+                )}
               </div>
             ))}
           </div>
