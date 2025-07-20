@@ -1,127 +1,190 @@
-import React, { createContext, useContext, useState } from 'react';
 import { supabase } from './supabase';
-import { authService } from './auth';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-interface AuthUser {
-  id: string;
-  email: string;
-  profile?: {
-    id: string;
-    full_name: string;
-    email: string;
-    target_score: number;
-    current_score: number;
-    exam_date?: string;
-    study_goal: string;
-    country?: string;
-    total_study_hours: number;
-    tests_completed: number;
-    current_streak: number;
-    created_at: string;
-    updated_at: string;
-  };
-}
+export const testService = {
+  async submitWriting(taskType: string, prompt: string, content: string, userId: string) {
+    try {
+      // Save to database first
+      const { data: submission, error: dbError } = await supabase
+        .from('writing_submissions')
+        .insert({
+          user_id: userId,
+          task_type: taskType,
+          prompt,
+          content,
+          word_count: content.split(' ').length,
+        })
+        .select()
+        .single();
 
-interface AuthContextType {
-  user: AuthUser | null;
-  loading: boolean;
-  signIn: (email: string, password: string) => Promise<void>;
-  signUp: (email: string, password: string, fullName: string) => Promise<void>;
-  signOut: () => Promise<void>;
-  updateProfile: (updates: any) => Promise<void>;
-}
+      if (dbError) throw dbError;
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+      // Call AI feedback function
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/ai-feedback`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          type: 'writing',
+          taskType,
+          content,
+          prompt
+        }),
+      });
 
-export function useAuth() {
-  const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
-}
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
 
-// Mock user data
-const mockUser: AuthUser = {
-  id: '1',
-  email: 'demo@example.com',
-  profile: {
-    id: '1',
-    full_name: 'Demo User',
-    email: 'demo@example.com',
-    target_score: 8.0,
-    current_score: 7.2,
-    exam_date: '2024-06-15',
-    study_goal: 'University Application',
-    country: 'United States',
-    total_study_hours: 45.5,
-    tests_completed: 12,
-    current_streak: 7,
-    created_at: '2024-01-01T00:00:00Z',
-    updated_at: '2024-01-15T00:00:00Z',
+      const feedback = await response.json();
+
+      // Update submission with AI feedback
+      const { error: updateError } = await supabase
+        .from('writing_submissions')
+        .update({
+          band_score: feedback.overallBand,
+          task_response: feedback.taskResponse,
+          coherence_cohesion: feedback.coherenceCohesion,
+          lexical_resource: feedback.lexicalResource,
+          grammatical_range: feedback.grammaticalRange,
+          ai_feedback: feedback
+        })
+        .eq('id', submission.id);
+
+      if (updateError) throw updateError;
+
+      return {
+        id: submission.id,
+        overallBand: feedback.overallBand,
+        taskResponse: feedback.taskResponse,
+        coherenceCohesion: feedback.coherenceCohesion,
+        lexicalResource: feedback.lexicalResource,
+        grammaticalRange: feedback.grammaticalRange,
+        strengths: feedback.strengths,
+        improvements: feedback.improvements,
+        suggestions: feedback.suggestions
+      };
+    } catch (error) {
+      console.error('Error submitting writing:', error);
+      throw error;
+    }
+  },
+
+  async submitSpeaking(part: number, question: string, recordingUrl: string, userId: string) {
+    try {
+      // Save to database first
+      const { data: recording, error: dbError } = await supabase
+        .from('speaking_recordings')
+        .insert({
+          user_id: userId,
+          part_number: part,
+          question,
+          recording_url: recordingUrl,
+          duration: 120 // Default duration
+        })
+        .select()
+        .single();
+
+      if (dbError) throw dbError;
+
+      // Call AI feedback function
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/ai-feedback`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          type: 'speaking',
+          part,
+          question,
+          recordingUrl
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const feedback = await response.json();
+
+      // Update recording with AI feedback
+      const { error: updateError } = await supabase
+        .from('speaking_recordings')
+        .update({
+          band_score: feedback.overallBand,
+          fluency_coherence: feedback.fluencyCoherence,
+          pronunciation: feedback.pronunciation,
+          lexical_resource: feedback.lexicalResource,
+          grammatical_range: feedback.grammaticalRange,
+          ai_feedback: feedback
+        })
+        .eq('id', recording.id);
+
+      if (updateError) throw updateError;
+
+      return {
+        id: recording.id,
+        overallBand: feedback.overallBand,
+        fluencyCoherence: feedback.fluencyCoherence,
+        pronunciation: feedback.pronunciation,
+        lexicalResource: feedback.lexicalResource,
+        grammaticalRange: feedback.grammaticalRange,
+        strengths: feedback.strengths,
+        improvements: feedback.improvements,
+        suggestions: feedback.suggestions
+      };
+    } catch (error) {
+      console.error('Error submitting speaking:', error);
+      throw error;
+    }
+  },
+
+  async submitReading(passageId: string, answers: any, userId: string) {
+    try {
+      const { data, error } = await supabase
+        .from('reading_responses')
+        .insert({
+          user_id: userId,
+          passage_id: passageId,
+          answers,
+          score: 0, // Will be calculated
+          total_questions: Object.keys(answers).length
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error submitting reading:', error);
+      throw error;
+    }
+  },
+
+  async submitListening(audioId: string, answers: any, userId: string) {
+    try {
+      const { data, error } = await supabase
+        .from('listening_responses')
+        .insert({
+          user_id: userId,
+          audio_id: audioId,
+          answers,
+          score: 0, // Will be calculated
+          total_questions: Object.keys(answers).length
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error submitting listening:', error);
+      throw error;
+    }
   }
 };
-
-export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<AuthUser | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  const signIn = async (email: string, password: string) => {
-    setLoading(true);
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    setUser(mockUser);
-    setLoading(false);
-  };
-
-  const signUp = async (email: string, password: string, fullName: string) => {
-    setLoading(true);
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    const newUser = {
-      ...mockUser,
-      email,
-      profile: {
-        ...mockUser.profile!,
-        email,
-        full_name: fullName,
-      }
-    };
-    setUser(newUser);
-    setLoading(false);
-  };
-
-  const signOut = async () => {
-    setUser(null);
-  };
-
-  const updateProfile = async (updates: any) => {
-    if (user?.profile) {
-      setUser({
-        ...user,
-        profile: {
-          ...user.profile,
-          ...updates,
-        }
-      });
-    }
-  };
-
-  const value = {
-    user,
-    loading,
-    signIn,
-    signUp,
-    signOut,
-    updateProfile,
-  };
-
-  return (
-    <AuthContext.Provider value={value}>
-      {children}
-    </AuthContext.Provider>
-  );
-}
