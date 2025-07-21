@@ -234,7 +234,25 @@ export const testService = {
     else if (percentage >= 40) bandScore = 5.5;
     else if (percentage >= 30) bandScore = 5.0;
     else if (percentage >= 20) bandScore = 4.5;
-  }
+
+    const { data, error } = await supabase
+      .from('listening_responses')
+      .insert({
+        user_id: user.id,
+        audio_id: response.audio_id,
+        answers: response.answers,
+        correct_answers: response.correct_answers,
+        score,
+        total_questions: response.total_questions,
+        band_score: bandScore
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  },
+
   async submitWriting(taskType: string, prompt: string, content: string, userId: string) {
     try {
       // Save to database first
