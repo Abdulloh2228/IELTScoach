@@ -204,26 +204,6 @@ export const testService = {
     return data;
   },
 
-    const { data, error } = await supabase
-      .from('reading_responses')
-      .insert({
-        user_id: user.id,
-        session_id: response.session_id,
-        passage_id: response.passage_id,
-        answers: response.answers,
-        correct_answers: response.correct_answers,
-        score,
-        total_questions: response.total_questions,
-        band_score: bandScore,
-        time_taken: response.time_taken
-      })
-      .select()
-      .single();
-
-    if (error) throw error;
-    return data;
-  },
-
   async submitListeningResponse(response: {
     audio_id: string;
     answers: { [key: string]: string };
