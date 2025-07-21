@@ -234,6 +234,7 @@ export const testService = {
     else if (percentage >= 40) bandScore = 5.5;
     else if (percentage >= 30) bandScore = 5.0;
     else if (percentage >= 20) bandScore = 4.5;
+  }
   async submitWriting(taskType: string, prompt: string, content: string, userId: string) {
     try {
       // Save to database first
