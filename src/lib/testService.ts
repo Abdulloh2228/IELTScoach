@@ -186,6 +186,25 @@ export const testService = {
     else if (percentage >= 20) bandScore = 4.5;
 
     const { data, error } = await supabase
+      .from('listening_responses')
+      .insert({
+        user_id: user.id,
+        session_id: response.session_id,
+        audio_id: response.audio_id,
+        answers: response.answers,
+        correct_answers: response.correct_answers,
+        score,
+        total_questions: response.total_questions,
+        band_score: bandScore
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  },
+
+    const { data, error } = await supabase
       .from('reading_responses')
       .insert({
         user_id: user.id,
