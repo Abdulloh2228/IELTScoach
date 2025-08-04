@@ -1,4 +1,7 @@
 import React, { createContext, useContext, useState } from 'react';
+import { useEffect } from 'react';
+import { supabase } from '../lib/supabase';
+import type { User } from '@supabase/supabase-js';
 
 interface AuthUser {
   id: string;
@@ -39,69 +42,130 @@ export function useAuth() {
   return context;
 }
 
-// Mock user data
-const mockUser: AuthUser = {
-  id: '1',
-  email: 'demo@example.com',
-  profile: {
-    id: '1',
-    full_name: 'Demo User',
-    email: 'demo@example.com',
-    target_score: 8.0,
-    current_score: 7.2,
-    exam_date: '2024-06-15',
-    study_goal: 'University Application',
-    country: 'United States',
-    total_study_hours: 45.5,
-    tests_completed: 12,
-    current_streak: 7,
-    created_at: '2024-01-01T00:00:00Z',
-    updated_at: '2024-01-15T00:00:00Z',
-  }
-};
-
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    // Get initial session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        fetchUserProfile(session.user);
+      } else {
+        setLoading(false);
+      }
+    });
+
+    // Listen for auth changes
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (session?.user) {
+        await fetchUserProfile(session.user);
+      } else {
+        setUser(null);
+        setLoading(false);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const fetchUserProfile = async (supabaseUser: User) => {
+    try {
+      const { data: profile, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', supabaseUser.id)
+        .single();
+
+      if (error && error.code !== 'PGRST116') {
+        console.error('Error fetching profile:', error);
+      }
+
+      setUser({
+        id: supabaseUser.id,
+        email: supabaseUser.email || '',
+        profile: profile || undefined,
+      });
+    } catch (error) {
+      console.error('Error in fetchUserProfile:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const signIn = async (email: string, password: string) => {
     setLoading(true);
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    setUser(mockUser);
-    setLoading(false);
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (error) throw error;
+
+      // User will be set via the auth state change listener
+    } catch (error) {
+      setLoading(false);
+      throw error;
+    }
   };
 
   const signUp = async (email: string, password: string, fullName: string) => {
     setLoading(true);
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    const newUser = {
-      ...mockUser,
-      email,
-      profile: {
-        ...mockUser.profile!,
+    try {
+      const { data, error } = await supabase.auth.signUp({
         email,
-        full_name: fullName,
+        password,
+      });
+
+      if (error) throw error;
+
+      if (data.user) {
+        // Create profile
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .insert({
+            id: data.user.id,
+            full_name: fullName,
+            email: email,
+          });
+
+        if (profileError) {
+          console.error('Error creating profile:', profileError);
+        }
       }
-    };
-    setUser(newUser);
-    setLoading(false);
+
+      // User will be set via the auth state change listener
+    } catch (error) {
+      setLoading(false);
+      throw error;
+    }
   };
 
   const signOut = async () => {
-    setUser(null);
+    const { error } = await supabase.auth.signOut();
+    if (error) throw error;
+    // User will be cleared via the auth state change listener
   };
 
   const updateProfile = async (updates: any) => {
-    if (user?.profile) {
-      setUser({
-        ...user,
-        profile: {
-          ...user.profile,
-          ...updates,
-        }
-      });
+    if (!user) throw new Error('No user logged in');
+
+    const { error } = await supabase
+      .from('profiles')
+      .update(updates)
+      .eq('id', user.id);
+
+    if (error) throw error;
+
+    // Refetch the profile to get updated data
+    if (user) {
+      const supabaseUser = await supabase.auth.getUser();
+      if (supabaseUser.data.user) {
+        await fetchUserProfile(supabaseUser.data.user);
+      }
     }
   };
 
