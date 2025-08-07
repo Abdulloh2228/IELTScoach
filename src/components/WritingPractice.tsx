@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Upload, Camera, Send, Clock, FileText, User, Lightbulb } from 'lucide-react';
-import { mockTestService as testService } from '../lib/mockServices';
+import { testService } from '../lib/testService';
 import { progressService } from '../lib/progressService';
 import { getRandomWritingTask } from '../lib/testMaterials';
 
