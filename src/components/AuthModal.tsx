@@ -32,7 +32,15 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'signin' }: A
       }
       onClose();
     } catch (err: any) {
-      setError(err.message || 'An error occurred');
+      if (err.message?.includes('User already registered') && mode === 'signup') {
+        setError('This email is already registered. Switching to sign in...');
+        setTimeout(() => {
+          setMode('signin');
+          setError('');
+        }, 2000);
+      } else {
+        setError(err.message || 'An error occurred');
+      }
     } finally {
       setLoading(false);
     }
